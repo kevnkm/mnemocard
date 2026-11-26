@@ -1,0 +1,7 @@
+<resources>
+    <!-- Light navigation bar icons need API 27. -->
+    <style name="Theme.MnemoCard" parent="Base.Theme.MnemoCard">
+        <item name="android:navigationBarColor">@android:color/transparent</item>
+        <item name="android:windowLightNavigationBar">true</item>
+    </style>
+</resources>

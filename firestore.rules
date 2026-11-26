@@ -1,0 +1,75 @@
+rules_version = '2';
+
+// Unified deck collection: all published and user-created decks live at decks/{deckId}
+// in the StudyDeck shape from packages/core/src/types.ts.
+// - Single-document reads are public; list queries are capped at 25 docs per load.
+// - Only non-anonymous authenticated users (Google Auth) can create, edit, or delete
+//   their own decks.
+service cloud.firestore {
+  match /databases/{database}/documents {
+    match /decks/{deckId} {
+      allow get: if true;
+      allow list: if request.query.limit != null && request.query.limit <= 25;
+      allow create: if isAuthenticatedUser()
+        && request.resource.data.ownerId == request.auth.uid
+        && isValidDeck(request.resource.data);
+      allow update: if isAuthenticatedUser()
+        && resource.data.ownerId == request.auth.uid
+        && request.resource.data.ownerId == request.auth.uid
+        && isValidDeck(request.resource.data);
+      allow delete: if isAuthenticatedUser()
+        && resource.data.ownerId == request.auth.uid;
+    }
+
+    // Per-user profile: onboarding answers (subjects, motivation, interests, goal).
+    match /users/{uid} {
+      allow read: if isOwner(uid);
+      allow create, update: if isAuthenticatedUser() && isOwner(uid) && isValidProfile(request.resource.data);
+      allow delete: if isOwner(uid);
+    }
+
+    // Legacy per-user path kept for native app compatibility.
+    match /users/{uid}/decks/{deckId} {
+      allow read, delete: if isOwner(uid);
+      allow create, update: if isOwner(uid) && isValidDeck(request.resource.data);
+    }
+
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isAuthenticatedUser() {
+      return isSignedIn()
+        && request.auth.token.firebase.sign_in_provider != 'anonymous';
+    }
+
+    function isOwner(uid) {
+      return isSignedIn() && request.auth.uid == uid;
+    }
+
+    function isValidProfile(p) {
+      return p.keys().hasOnly([
+          'subjectIds', 'motivation', 'interests', 'dailyGoalMinutes',
+          'onboardingCompleted', 'updatedAt'
+        ])
+        && p.subjectIds is list && p.subjectIds.size() <= 50
+        && p.interests is list && p.interests.size() <= 100
+        && p.motivation is string && p.motivation.size() <= 50
+        && p.dailyGoalMinutes is int
+        && p.onboardingCompleted is bool;
+    }
+
+    function isValidDeck(deck) {
+      return deck.keys().hasOnly([
+          'title', 'description', 'icon', 'color', 'category', 'subject', 'tags',
+          'fieldConfigs', 'cards', 'cardCount', 'searchKeywords',
+          'isOfficial', 'ownerId', 'inMyDecks', 'isPublicSynced',
+          'createdAt', 'updatedAt'
+        ])
+        && deck.keys().hasAll(['title', 'cards', 'createdAt', 'updatedAt'])
+        && deck.title is string && deck.title.size() <= 300
+        && deck.cards is list && deck.cards.size() <= 2000
+        && deck.createdAt is string && deck.updatedAt is string;
+    }
+  }
+}

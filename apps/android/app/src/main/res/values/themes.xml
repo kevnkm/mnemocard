@@ -1,0 +1,10 @@
+<resources>
+    <!-- Applies before Compose draws, including the launch splash screen. -->
+    <style name="Base.Theme.MnemoCard" parent="android:Theme.Material.Light.NoActionBar">
+        <item name="android:windowBackground">@color/app_background</item>
+        <item name="android:statusBarColor">@android:color/transparent</item>
+        <item name="android:windowLightStatusBar">true</item>
+    </style>
+
+    <style name="Theme.MnemoCard" parent="Base.Theme.MnemoCard" />
+</resources>

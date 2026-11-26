@@ -1,0 +1,61 @@
+# Dependencies
+node_modules
+.pnp
+.pnp.*
+
+# Local env files
+.env
+.env.local
+.env.*.local
+
+# Build & caches
+.turbo
+dist
+build
+coverage
+*.tsbuildinfo
+
+# Xcode
+xcuserdata/
+DerivedData/
+*.xcuserstate
+.build/
+
+# Android / Gradle
+.gradle/
+local.properties
+.kotlin/
+.idea/
+*.iml
+captures/
+.externalNativeBuild/
+.cxx/
+*.apk
+*.aab
+
+# Signing
+*.jks
+*.keystore
+*.p8
+*.p12
+*.key
+*.mobileprovision
+*.orig.*
+
+# Firebase
+.firebase
+firebase-debug.log*
+firestore-debug.log*
+ui-debug.log*
+
+# OS & Logs
+.DS_Store
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Firebase client config (per-developer)
+GoogleService-Info.plist
+google-services.json
+*firebase-adminsdk*.json
+service-account*.json

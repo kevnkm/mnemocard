@@ -1,0 +1,4 @@
+<resources>
+    <!-- Shared by the window theme (splash, system bars) and Compose (MnemoCardTheme). -->
+    <color name="app_background">#FFFEF7FF</color>
+</resources>
