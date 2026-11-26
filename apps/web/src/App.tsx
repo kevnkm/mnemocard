@@ -32,9 +32,9 @@ const queryClient = new QueryClient({
  * isn't bounced into onboarding. Deep links (/deck, /explore, …) are never gated.
  */
 function OnboardingGate({ children }: { children: React.ReactNode }) {
-  const { preferences, profileStatus, decks } = useWebStore();
+  const { preferences, profileStatus, libraryStatus, decks } = useWebStore();
   if (preferences.onboardingCompleted) return <>{children}</>;
-  if (profileStatus === 'loading') return null;
+  if (profileStatus === 'loading' || libraryStatus === 'loading') return null;
   const hasLibrary = decks.some((d) => d.inMyDecks);
   if (hasLibrary) return <>{children}</>;
   return <Navigate to="/welcome" replace />;

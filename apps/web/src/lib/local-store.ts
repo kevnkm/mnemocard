@@ -27,6 +27,11 @@ const STORAGE_KEYS = {
 export type DecksStatus = 'loading' | 'ready';
 /** 'loading' until auth resolves and (for signed-in users) the synced profile is merged. */
 export type ProfileStatus = 'loading' | 'ready';
+/**
+ * 'loading' until auth resolves and the user's library (owned + pinned decks) is
+ * fetched, so Home never renders a partial library from the stale local cache.
+ */
+export type LibraryStatus = 'loading' | 'ready';
 
 export interface WebStoreSnapshot {
   decks: StudyDeck[];
@@ -37,6 +42,7 @@ export interface WebStoreSnapshot {
   recommendedFor: string;
   recommendedStatus: DecksStatus;
   profileStatus: ProfileStatus;
+  libraryStatus: LibraryStatus;
   progressMap: Record<string, LocalCardProgress>;
   preferences: UserPreferences;
   authUser: AuthUser | null;
@@ -155,6 +161,7 @@ function loadInitialSnapshot(): WebStoreSnapshot {
     recommendedFor: '',
     recommendedStatus: 'ready',
     profileStatus: isFirebaseConfigured ? 'loading' : 'ready',
+    libraryStatus: isFirebaseConfigured ? 'loading' : 'ready',
     progressMap,
     preferences: prefs,
     authUser: null,
@@ -175,6 +182,11 @@ function emit(): void {
 let cloud: CloudDecks | null = null;
 let cloudReadyPromise: Promise<CloudDecks | null> | null = null;
 
+/** Decks the user has studied: Today lists them even when they aren't pinned. */
+function studiedDeckIds(): Set<string> {
+  return new Set(Object.values(snapshot.progressMap).map((p) => p.deckId));
+}
+
 function persistLocalDecks(decks: StudyDeck[], uid: string | null = snapshot.currentUid): void {
   if (!isFirebaseConfigured) {
     const starterIds = new Set(STARTER_STUDY_DECKS.map((d) => d.id));
@@ -185,13 +197,16 @@ function persistLocalDecks(decks: StudyDeck[], uid: string | null = snapshot.cur
     return;
   }
   // When Firestore is active, let Firestore's IndexedDB cache handle browsed decks;
-  // only keep the user's own or pinned decks in localStorage to avoid the 5MB quota.
+  // only keep the user's library (own, pinned, or studied decks) in localStorage to
+  // avoid the 5MB quota.
+  const studied = studiedDeckIds();
   writeJson(
     STORAGE_KEYS.DECKS,
     decks.filter(
       (d) =>
         isOwnedDeck(d, uid) ||
         pinnedDeckIds.has(d.id) ||
+        studied.has(d.id) ||
         // Auth not resolved yet: don't evict the user's own decks.
         (!uid && !d.isOfficial && Boolean(d.ownerId))
     )
@@ -245,10 +260,14 @@ function mergeIntoCache(remote: StudyDeck[]): void {
   emit();
 }
 
-/** Fetches pinned decks that aren't cached locally (e.g. pinned on an older build). */
-async function hydratePinnedDecks(client: CloudDecks): Promise<void> {
+/**
+ * Fetches library decks (pinned or studied) that aren't cached locally, e.g. ones
+ * cached by an older build that only kept owned/pinned decks.
+ */
+async function hydrateLibraryDecks(client: CloudDecks): Promise<void> {
   const known = new Set(snapshot.decks.map((d) => d.id));
-  const missing = Array.from(pinnedDeckIds).filter((id) => !known.has(id));
+  const wanted = new Set([...pinnedDeckIds, ...studiedDeckIds()]);
+  const missing = Array.from(wanted).filter((id) => !known.has(id));
   if (missing.length === 0) return;
   const fetched = await Promise.all(missing.map((id) => client.fetchDeck(id)));
   mergeIntoCache(fetched.filter((d): d is StudyDeck => d !== null));
@@ -263,6 +282,22 @@ async function hydrateOwnedDecks(client: CloudDecks, uid: string): Promise<void>
   if (snapshot.currentUid === uid) mergeIntoCache(owned);
 }
 
+/** Upper bound on how long Home waits for the library before rendering the cache. */
+const LIBRARY_READY_TIMEOUT_MS = 5000;
+let libraryHydration: Promise<void> = Promise.resolve();
+
+function markLibraryReady(): void {
+  if (snapshot.libraryStatus === 'ready') return;
+  snapshot = { ...snapshot, libraryStatus: 'ready' };
+  emit();
+}
+
+/** Marks the library ready once auth has resolved and owned + pinned + studied decks are merged. */
+function settleLibrary(ownedHydration: Promise<void>): void {
+  if (snapshot.libraryStatus === 'ready') return;
+  void Promise.allSettled([libraryHydration, ownedHydration]).then(markLibraryReady);
+}
+
 function applyAuthChange(user: AuthUser | null): void {
   const uid = user?.uid ?? null;
   const decks = applyPinnedFlags(snapshot.decks, pinnedDeckIds, uid);
@@ -274,10 +309,11 @@ function applyAuthChange(user: AuthUser | null): void {
     profileStatus: uid && cloud ? 'loading' : 'ready',
   };
   emit();
+  const ownedHydration = uid && cloud ? hydrateOwnedDecks(cloud, uid) : Promise.resolve();
   if (uid && cloud) {
-    void hydrateOwnedDecks(cloud, uid);
     void syncProfile(cloud, uid);
   }
+  settleLibrary(ownedHydration);
 }
 
 function toCloudProfile(prefs: UserPreferences): CloudProfile {
@@ -338,15 +374,24 @@ if (typeof window !== 'undefined' && isFirebaseConfigured) {
         onDecksPage: applyDecksPage,
         onAuthChange: applyAuthChange,
       });
-      void hydratePinnedDecks(cloud);
+      libraryHydration = hydrateLibraryDecks(cloud).catch((err) =>
+        console.warn('[Firestore] Library deck hydration failed', err)
+      );
       return cloud;
     })
     .catch((err) => {
       console.warn('[Firestore] Deck sync unavailable', err);
-      snapshot = { ...snapshot, decksStatus: 'ready', profileStatus: 'ready' };
+      snapshot = {
+        ...snapshot,
+        decksStatus: 'ready',
+        profileStatus: 'ready',
+        libraryStatus: 'ready',
+      };
       emit();
       return null;
     });
+  // Never hold Home hostage to a slow network: fall back to the cached library.
+  setTimeout(markLibraryReady, LIBRARY_READY_TIMEOUT_MS);
 }
 
 export function subscribeWebStore(listener: () => void): () => void {
@@ -569,9 +614,12 @@ export function recordWebCardReview(
     lastActiveDate: today,
   };
 
+  const firstReviewInDeck = !Object.values(snapshot.progressMap).some((p) => p.deckId === deckId);
   snapshot = { ...snapshot, progressMap: nextMap, preferences: nextPrefs };
   writeJson(STORAGE_KEYS.PROGRESS, nextMap);
   writeJson(STORAGE_KEYS.PREFS, nextPrefs);
+  // A newly studied deck joins the user's library, so cache it for instant loads.
+  if (firstReviewInDeck) persistLocalDecks(snapshot.decks);
   emit();
   return nextProgress;
 }
@@ -691,6 +739,7 @@ export function resetWebStore(): void {
     recommendedFor: '',
     recommendedStatus: 'ready',
     profileStatus: snapshot.profileStatus,
+    libraryStatus: snapshot.libraryStatus,
     progressMap: {},
     preferences: nextPrefs,
     authUser: snapshot.authUser,

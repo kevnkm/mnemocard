@@ -15,7 +15,7 @@ import { toggleWebDeckInMyDecks, useWebStore } from '@/lib/local-store';
 
 export default function TodayPage() {
   const { t, locale } = useI18n();
-  const { decks, progressMap, currentUid } = useWebStore();
+  const { decks, progressMap, currentUid, libraryStatus } = useWebStore();
   const [scrollMargin, setScrollMargin] = useState(0);
 
   const workspace = useMemo(
@@ -41,11 +41,13 @@ export default function TodayPage() {
       : t('home.new_cards', { count: totalNewInMyDecks });
 
   return (
-    <div className="min-h-screen flex flex-col bg-background text-foreground">
+    <div className="min-h-dvh flex flex-col bg-background text-foreground">
       <Navbar />
 
       <main className="max-w-5xl w-full mx-auto px-4 sm:px-6 pt-8 pb-16 space-y-6">
-        {isEmptyDesk ? (
+        {libraryStatus === 'loading' ? (
+          <TodaySkeleton />
+        ) : isEmptyDesk ? (
           <div className="space-y-6">
             <div className="space-y-1">
               <h1 className="text-xl font-semibold">{t('home.empty_title')}</h1>
@@ -54,7 +56,7 @@ export default function TodayPage() {
               </p>
             </div>
 
-            <div className="flex items-center gap-2">
+            <div className="flex flex-wrap items-center gap-2">
               <Link
                 to="/create"
                 className="h-9 px-4 rounded-md bg-primary text-primary-foreground text-sm font-medium flex items-center gap-1.5"
@@ -71,8 +73,8 @@ export default function TodayPage() {
           </div>
         ) : (
           <>
-            <div className="flex items-center justify-between gap-4">
-              <h1 className="text-xl font-semibold">{summary}</h1>
+            <div className="flex flex-wrap items-center justify-between gap-3 sm:gap-4">
+              <h1 className="text-xl font-semibold min-w-0">{summary}</h1>
               {(totalDue > 0 || totalNewInMyDecks > 0) && (
                 <Link
                   to={totalDue > 0 ? '/review?mode=due' : '/review?mode=new'}
@@ -108,11 +110,11 @@ export default function TodayPage() {
                     data-index={item.index}
                     ref={virtualizer.measureElement}
                     style={{ transform: `translateY(${item.start - scrollMargin}px)` }}
-                    className="absolute top-0 left-0 w-full flex items-center gap-3 py-3 border-b border-border last:border-b-0"
+                    className="absolute top-0 left-0 w-full flex items-center gap-2 sm:gap-3 py-3 border-b border-border last:border-b-0"
                   >
                     <Link
                       to={`/deck/${deck.id}`}
-                      className="flex items-center gap-3 min-w-0 flex-1 group"
+                      className="flex items-center gap-2.5 sm:gap-3 min-w-0 flex-1 group"
                     >
                       <div
                         style={{ backgroundColor: `${color}1A` }}
@@ -124,22 +126,22 @@ export default function TodayPage() {
                         <div className="text-sm font-medium truncate group-hover:underline">
                           {deck.title}
                         </div>
-                        <div className="text-xs text-muted-foreground">
+                        <div className="text-xs text-muted-foreground truncate">
                           {t('common.cards_count', { count: totalCount })} · {status}
                         </div>
                       </div>
                     </Link>
 
-                    <div className="flex items-center gap-1 shrink-0 text-xs font-medium">
+                    <div className="flex items-center gap-0.5 sm:gap-1 shrink-0 text-xs font-medium">
                       <Link
                         to={`/study/${deck.id}`}
-                        className="h-8 px-3 rounded-md flex items-center hover:bg-muted"
+                        className="h-8 px-2 sm:px-3 rounded-md flex items-center hover:bg-muted"
                       >
                         {t('common.study')}
                       </Link>
                       <Link
                         to={`/test/${deck.id}`}
-                        className="h-8 px-3 rounded-md flex items-center text-muted-foreground hover:bg-muted hover:text-foreground"
+                        className="h-8 px-2 sm:px-3 rounded-md flex items-center text-muted-foreground hover:bg-muted hover:text-foreground"
                       >
                         {t('common.test')}
                       </Link>
@@ -164,6 +166,32 @@ export default function TodayPage() {
       </main>
 
       <Footer />
+    </div>
+  );
+}
+
+/** Placeholder with the same layout as the loaded Home, shown while the library syncs. */
+function TodaySkeleton() {
+  return (
+    <div aria-busy="true" aria-live="polite" className="space-y-6 animate-pulse">
+      <div className="flex items-center justify-between gap-3 sm:gap-4">
+        <div className="h-7 w-40 rounded-md bg-muted" />
+        <div className="h-9 w-20 rounded-md bg-muted" />
+      </div>
+      <div className="w-full border-y border-border">
+        {Array.from({ length: 4 }, (_, i) => (
+          <div
+            key={i}
+            className="flex items-center gap-2.5 sm:gap-3 py-3 border-b border-border last:border-b-0"
+          >
+            <div className="w-9 h-9 rounded-md bg-muted shrink-0" />
+            <div className="flex-1 space-y-1.5">
+              <div className="h-3.5 w-1/3 rounded bg-muted" />
+              <div className="h-3 w-24 rounded bg-muted" />
+            </div>
+          </div>
+        ))}
+      </div>
     </div>
   );
 }
