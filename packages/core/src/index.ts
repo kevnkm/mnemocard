@@ -5,6 +5,8 @@ export * from './colors';
 export * from './srs';
 export * from './skim';
 export * from './test';
+export * from './voices';
+export * from './speech-text';
 export * from './today';
 export * from './seed-decks';
 export * from './deck-sync';
