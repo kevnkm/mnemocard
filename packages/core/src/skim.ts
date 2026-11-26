@@ -32,6 +32,20 @@ export const SKIM_MIN_DWELL_MS = 2000;
 export const SKIM_FLICK_VELOCITY_PX_S = 500;
 export const SKIM_CLASSIC_ADVANCE_PX = 72;
 
+export const SKIM_WHEEL_DOWN_SCALE = 0.11;
+export const SKIM_WHEEL_UP_SCALE = 0.65;
+export const SKIM_WHEEL_BRIEF_MIN_PULL_PX = 10;
+export const SKIM_WHEEL_DOUBLE_GAP_MS = 90;
+export const SKIM_WHEEL_DISCRETE_GAP_MS = 40;
+export const SKIM_WHEEL_DISCRETE_MIN_DY = 48;
+export const SKIM_WHEEL_SETTLE_MS = 380;
+
+export interface SkimWheelState {
+  pull: number;
+  lastEventMs: number;
+  evalActive: boolean;
+}
+
 export interface SkimPullThresholds {
   cancel: number;
   hard: number;
@@ -180,4 +194,61 @@ export function getPreferredAudioFace(
   const promptText = faces.find((f) => f.isPrompt && f.mediaKind === 'text');
   if (promptText) return promptText;
   return faces.find((f) => f.mediaKind === 'text' && !f.isAnswer) ?? current;
+}
+
+/**
+ * Advances the downward wheel-pull state. A single scroll gesture keeps
+ * `evalActive` false so a brief scroll commits `null`; only a consecutive
+ * (double) scroll activates the FSRS evaluation gauge.
+ */
+export function stepSkimWheelDown(
+  state: SkimWheelState,
+  dy: number,
+  nowMs: number,
+  thresholds: SkimPullThresholds,
+  isViewingHistory: boolean
+): { next: SkimWheelState; rating: Rating | 0 } {
+  const delta = dy * SKIM_WHEEL_DOWN_SCALE;
+  const dt = state.lastEventMs > 0 ? nowMs - state.lastEventMs : 0;
+  const isConsecutiveScroll =
+    state.pull > 0 &&
+    !state.evalActive &&
+    delta > 0 &&
+    !isViewingHistory &&
+    (dt >= SKIM_WHEEL_DOUBLE_GAP_MS ||
+      (dt >= SKIM_WHEEL_DISCRETE_GAP_MS && dy >= SKIM_WHEEL_DISCRETE_MIN_DY));
+
+  const evalActive = isViewingHistory ? false : state.evalActive || isConsecutiveScroll;
+  let pull = isConsecutiveScroll
+    ? Math.min(thresholds.maxPull, thresholds.cancel + delta)
+    : Math.min(thresholds.maxPull, Math.max(0, state.pull + delta));
+
+  const nextEvalActive = pull > 0 ? evalActive : false;
+  const rating = nextEvalActive ? resolvePullRating(pull, thresholds) : 0;
+
+  return {
+    next: {
+      pull,
+      lastEventMs: nowMs,
+      evalActive: nextEvalActive,
+    },
+    rating,
+  };
+}
+
+/** Resolves what to commit when downward wheel scrolling settles. */
+export function resolveSkimWheelSettle(
+  state: SkimWheelState,
+  thresholds: SkimPullThresholds,
+  isViewingHistory: boolean
+): { shouldCommit: boolean; rating: Rating | null } {
+  if (isViewingHistory || !state.evalActive) {
+    return state.pull >= SKIM_WHEEL_BRIEF_MIN_PULL_PX
+      ? { shouldCommit: true, rating: null }
+      : { shouldCommit: false, rating: null };
+  }
+  const rating = resolvePullRating(state.pull, thresholds);
+  return rating !== 0
+    ? { shouldCommit: true, rating }
+    : { shouldCommit: false, rating: null };
 }
