@@ -30,7 +30,7 @@ import {
   updateWebPreferences,
   useWebStore,
 } from '@/lib/local-store';
-import { speakWebText, stopWebSpeech } from '@/lib/speech';
+import { AUTO_PLAY_DELAY_MS, speakField, stopWebSpeech } from '@/lib/speech';
 
 export default function TodayReviewPage() {
   const navigate = useNavigate();
@@ -97,7 +97,7 @@ export default function TodayReviewPage() {
     if (!preferences.autoPlayAudio || !currentItem || isDone) return;
     const face = getPreferredAudioFace(faces, safeFaceIdx);
     if (face && face.mediaKind === 'text' && face.content) {
-      const timer = setTimeout(() => speakWebText(face.content, face.lang), 180);
+      const timer = setTimeout(() => speakField(face, faces), AUTO_PLAY_DELAY_MS);
       return () => {
         clearTimeout(timer);
         stopWebSpeech();
@@ -229,19 +229,19 @@ export default function TodayReviewPage() {
     : null;
 
   return (
-    <div className="min-h-screen flex flex-col bg-background text-foreground">
-      <header className="px-4 sm:px-8 h-12 border-b border-border bg-background flex items-center justify-between gap-4 z-30">
-        <div className="flex items-center gap-3">
+    <div className="min-h-dvh flex flex-col bg-background text-foreground overscroll-none overflow-x-hidden">
+      <header className="px-3 sm:px-8 h-12 border-b border-border bg-background flex items-center justify-between gap-3 sm:gap-4 z-30">
+        <div className="flex items-center gap-2 sm:gap-3 min-w-0 flex-1">
           <button
             type="button"
             onClick={() => void navigate('/')}
-            className="w-9 h-9 rounded-md text-muted-foreground hover:bg-muted flex items-center justify-center cursor-pointer"
+            className="w-8 h-8 sm:w-9 sm:h-9 shrink-0 rounded-md text-muted-foreground hover:bg-muted flex items-center justify-center cursor-pointer"
           >
             <ArrowLeft className="w-4 h-4" />
           </button>
-          <div>
-            <h1 className="text-sm sm:text-base font-semibold">{t('review.title')}</h1>
-            <p className="text-[11px] font-semibold text-muted-foreground">
+          <div className="min-w-0">
+            <h1 className="text-sm sm:text-base font-semibold truncate">{t('review.title')}</h1>
+            <p className="text-[11px] font-semibold text-muted-foreground truncate whitespace-nowrap">
               {completedCount} / {initialQueue.length} completed
             </p>
           </div>
@@ -252,7 +252,7 @@ export default function TodayReviewPage() {
           onClick={() =>
             updateWebPreferences({ autoPlayAudio: !preferences.autoPlayAudio })
           }
-          className={`w-9 h-9 rounded-md flex items-center justify-center cursor-pointer ${
+          className={`w-8 h-8 sm:w-9 sm:h-9 shrink-0 rounded-md flex items-center justify-center cursor-pointer ${
             preferences.autoPlayAudio
               ? 'bg-primary text-white'
               : 'bg-muted text-muted-foreground'
@@ -269,7 +269,7 @@ export default function TodayReviewPage() {
 
       <main className="flex-1 flex items-center justify-center p-4 sm:p-6">
         {isDone || !currentItem || !webCard ? (
-          <div className="bubbly-card max-w-md w-full text-center text-balance space-y-5 p-10">
+          <div className="bubbly-card max-w-md w-full text-center text-balance space-y-5 p-6 sm:p-10">
             <div className="w-20 h-20 mx-auto rounded-xl bg-emerald-500/15 text-emerald-500 flex items-center justify-center">
               <CheckCircle2 className="w-10 h-10" />
             </div>
@@ -312,40 +312,40 @@ export default function TodayReviewPage() {
                     intervalLabels={intervalLabels}
                     onVerticalDragMove={handleVerticalDragMove}
                     onVerticalDragEnd={handleVerticalDragEnd}
-                    onSpeakFace={(face: SkimFace) => speakWebText(face.content, face.lang)}
+                    onSpeakFace={(face: SkimFace) => speakField(face, faces)}
                     onOpenDeck={() => void navigate(`/deck/${currentItem.deck.id}`)}
                   />
                 </motion.div>
               </AnimatePresence>
             </div>
 
-            <div className="flex lg:flex-col items-center gap-3 w-full max-w-[440px] lg:w-auto">
-              <div className="flex lg:flex-col gap-2">
+            <div className="flex lg:flex-col items-center gap-2 sm:gap-3 w-full max-w-[440px] lg:w-auto">
+              <div className="flex lg:flex-col gap-1.5 sm:gap-2 shrink-0">
                 <button
                   type="button"
                   disabled={!canGoPrevious}
                   onClick={commitPrevious}
-                  className="w-11 h-11 rounded-md bg-card border border-border flex items-center justify-center disabled:opacity-30 cursor-pointer"
+                  className="w-10 h-10 sm:w-11 sm:h-11 rounded-md bg-card border border-border flex items-center justify-center disabled:opacity-30 cursor-pointer"
                 >
                   <ChevronUp className="w-5 h-5" />
                 </button>
                 <button
                   type="button"
                   onClick={() => commitNext(Rating.Good)}
-                  className="w-11 h-11 rounded-md bg-card border border-border flex items-center justify-center cursor-pointer"
+                  className="w-10 h-10 sm:w-11 sm:h-11 rounded-md bg-card border border-border flex items-center justify-center cursor-pointer"
                 >
                   <ChevronDown className="w-5 h-5" />
                 </button>
               </div>
-              <div className="flex-1 grid grid-cols-4 lg:grid-cols-1 gap-2 w-full lg:w-32">
+              <div className="flex-1 min-w-0 grid grid-cols-4 lg:grid-cols-1 gap-1.5 sm:gap-2 w-full lg:w-32">
                 {[Rating.Again, Rating.Hard, Rating.Good, Rating.Easy].map((r) => (
                   <button
                     key={r}
                     type="button"
                     onClick={() => commitNext(r)}
-                    className="px-3 py-2.5 rounded-lg bg-card border border-border hover:bg-muted font-semibold text-xs flex flex-col items-center lg:items-start cursor-pointer"
+                    className="px-1.5 sm:px-3 py-2.5 rounded-lg bg-card border border-border hover:bg-muted font-semibold text-xs flex flex-col items-center lg:items-start cursor-pointer min-w-0"
                   >
-                    <span>
+                    <span className="truncate max-w-full">
                       {r === Rating.Again
                         ? 'Again'
                         : r === Rating.Hard
@@ -354,7 +354,7 @@ export default function TodayReviewPage() {
                             ? 'Good'
                             : 'Easy'}
                     </span>
-                    <span className="text-[10px] opacity-60">{intervalLabels[r]}</span>
+                    <span className="text-[10px] opacity-60 truncate max-w-full">{intervalLabels[r]}</span>
                   </button>
                 ))}
               </div>

@@ -36,7 +36,7 @@ export default function DeckDetailPage() {
 
   if (!deck) {
     return (
-      <div className="min-h-screen flex flex-col bg-background">
+      <div className="min-h-dvh flex flex-col bg-background text-foreground overscroll-none">
         <Navbar />
         <div className="flex-1 flex flex-col items-center justify-center p-6 text-center space-y-4">
           <h1 className="text-lg font-semibold">{t('common.deck_not_found')}</h1>
@@ -75,7 +75,7 @@ export default function DeckDetailPage() {
     'h-8 px-2 rounded-md text-sm text-muted-foreground hover:text-foreground hover:bg-muted flex items-center cursor-pointer';
 
   return (
-    <div className="min-h-screen flex flex-col bg-background text-foreground">
+    <div className="min-h-dvh flex flex-col bg-background text-foreground">
       <Navbar />
 
       <main className="max-w-5xl w-full mx-auto px-4 sm:px-6 pt-8 pb-16 space-y-6">

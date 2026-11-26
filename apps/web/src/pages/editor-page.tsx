@@ -420,11 +420,11 @@ function EditorForm({ existingDeck }: { existingDeck?: StudyDeck }) {
 
       {/* Cards */}
       <section className="space-y-3 pt-4 border-t border-border">
-        <div className="flex items-center justify-between gap-2">
+        <div className="flex flex-wrap items-center justify-between gap-2">
           <h2 className="text-sm font-medium text-muted-foreground">
             {t('editor.cards_heading', { count: cards.length })}
           </h2>
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2">
             {(fillableCards.length > 0 || fillProgress !== null) && (
               <button
                 type="button"
@@ -733,7 +733,7 @@ function EditorForm({ existingDeck }: { existingDeck?: StudyDeck }) {
       {aiNotice && (
         <div
           role="status"
-          className="fixed bottom-5 right-5 z-50 max-w-sm rounded-lg border border-border bg-card text-card-foreground shadow-lg px-3.5 py-2.5 flex items-center gap-3 text-xs font-medium"
+          className="fixed bottom-5 right-4 left-4 sm:left-auto sm:right-5 z-50 max-w-sm ml-auto rounded-lg border border-border bg-card text-card-foreground shadow-lg px-3.5 py-2.5 flex items-center gap-3 text-xs font-medium"
         >
           <span className="text-emerald-600 dark:text-emerald-400">{aiNotice}</span>
           <button
@@ -761,7 +761,7 @@ export default function EditorPage() {
   }
 
   return (
-    <div className="min-h-screen flex flex-col bg-background text-foreground">
+    <div className="min-h-dvh flex flex-col bg-background text-foreground">
       <Navbar />
       {isFirebaseConfigured && !authUser ? (
         <main className="flex-1 max-w-md w-full mx-auto px-4 sm:px-6 py-16 flex flex-col items-center justify-center text-center space-y-4">

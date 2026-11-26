@@ -19,10 +19,14 @@ import {
   getPreferredAudioFace,
   getSkimPullThresholds,
   Rating,
+  resolveSkimWheelSettle,
   SKIM_CLASSIC_ADVANCE_PX,
   SKIM_FLICK_MIN_PULL_PX,
   SKIM_FLICK_VELOCITY_PX_S,
   SKIM_MIN_DWELL_MS,
+  SKIM_WHEEL_SETTLE_MS,
+  SKIM_WHEEL_UP_SCALE,
+  stepSkimWheelDown,
   type SkimFace,
   type StudyCard,
 } from '@mnemocard/core';
@@ -37,7 +41,7 @@ import {
   updateWebPreferences,
   useWebStore,
 } from '@/lib/local-store';
-import { speakWebText, stopWebSpeech } from '@/lib/speech';
+import { AUTO_PLAY_DELAY_MS, speakField, stopWebSpeech } from '@/lib/speech';
 
 const SHOW_CONTROLS_KEY = 'mnemocard.scroll.showControls';
 
@@ -186,7 +190,7 @@ export function SkimView({
     if (!preferences.autoPlayAudio || !currentCard || isFinished) return;
     const face = getPreferredAudioFace(faces, safeFaceIndex);
     if (face && face.mediaKind === 'text' && face.content) {
-      const timer = setTimeout(() => speakWebText(face.content, face.lang), 180);
+      const timer = setTimeout(() => speakField(face, faces), AUTO_PLAY_DELAY_MS);
       return () => {
         clearTimeout(timer);
         stopWebSpeech();
@@ -322,8 +326,8 @@ export function SkimView({
     setPullRating(0);
   };
 
-  // Mouse wheel / trackpad scrolling: consecutive scrolls tension the card through
-  // Again -> Hard -> Good -> Easy (just like pulling upward) and commit on settle.
+  // Mouse wheel / trackpad scrolling: a brief scroll advances with null eval;
+  // double (consecutive) scrolls activate the FSRS evaluation gauge (Again -> Easy).
   const wheelActionsRef = useRef({
     commit: (() => {}) as (rating: Rating | null) => void,
     previous: () => {},
@@ -351,8 +355,6 @@ export function SkimView({
     const el = mainRef.current;
     if (!el || !hasCard) return;
     const HORIZ_THRESHOLD = 60;
-    const SCROLL_SCALE = 0.65;
-    const SETTLE_MS = 280;
     const LOCK_MS = 380;
 
     const st = {
@@ -360,6 +362,7 @@ export function SkimView({
       pull: 0,
       upPull: 0,
       last: 0,
+      evalActive: false,
       lockUntil: 0,
       settleTimer: null as number | null,
     };
@@ -371,19 +374,11 @@ export function SkimView({
       }
     };
 
-    const resolvePullRating = (pull: number): Rating | 0 => {
-      const height = stageRef.current?.clientHeight || 520;
-      const t = getSkimPullThresholds(height);
-      if (pull >= t.easy) return Rating.Easy;
-      if (pull >= t.good) return Rating.Good;
-      if (pull >= t.hard) return Rating.Hard;
-      if (pull >= t.cancel) return Rating.Again;
-      return 0;
-    };
-
     const resetPullVisuals = () => {
       st.pull = 0;
       st.upPull = 0;
+      st.last = 0;
+      st.evalActive = false;
       setPullOffset(0);
       setPullRating(0);
     };
@@ -412,39 +407,45 @@ export function SkimView({
         return;
       }
 
-      st.last = now;
       const height = stageRef.current?.clientHeight || 520;
       const t = getSkimPullThresholds(height);
-      const delta = dy * SCROLL_SCALE;
 
-      if (st.pull > 0 || delta > 0) {
+      if (st.pull > 0 || dy > 0) {
         st.upPull = 0;
-        st.pull = Math.min(t.maxPull, Math.max(0, st.pull + delta));
-        const rating = wheelActionsRef.current.isViewingHistory ? 0 : resolvePullRating(st.pull);
+        const { next, rating } = stepSkimWheelDown(
+          { pull: st.pull, lastEventMs: st.last, evalActive: st.evalActive },
+          dy,
+          now,
+          t,
+          wheelActionsRef.current.isViewingHistory
+        );
+        st.pull = next.pull;
+        st.last = next.lastEventMs;
+        st.evalActive = next.evalActive;
+
         setPullOffset(-st.pull);
         setPullRating(rating);
 
         clearSettle();
         st.settleTimer = window.setTimeout(() => {
           st.settleTimer = null;
-          const finalPull = st.pull;
-          const finalRating = resolvePullRating(finalPull);
+          const settled = resolveSkimWheelSettle(
+            { pull: st.pull, lastEventMs: st.last, evalActive: st.evalActive },
+            t,
+            wheelActionsRef.current.isViewingHistory
+          );
           resetPullVisuals();
 
-          if (wheelActionsRef.current.isViewingHistory) {
-            if (finalPull >= SKIM_CLASSIC_ADVANCE_PX) {
-              st.lockUntil = performance.now() + LOCK_MS;
-              wheelActionsRef.current.commit(null);
-            }
-          } else if (finalRating !== 0) {
+          if (settled.shouldCommit) {
             st.lockUntil = performance.now() + LOCK_MS;
-            wheelActionsRef.current.commit(finalRating);
+            wheelActionsRef.current.commit(settled.rating);
           }
-        }, SETTLE_MS);
+        }, SKIM_WHEEL_SETTLE_MS);
       } else {
         // Scrolling up from rest navigates to the previous card.
+        st.last = now;
         clearSettle();
-        st.upPull += -delta;
+        st.upPull += -dy * SKIM_WHEEL_UP_SCALE;
         setPullOffset(Math.min(SKIM_CLASSIC_ADVANCE_PX, st.upPull));
         setPullRating(0);
 
@@ -456,7 +457,7 @@ export function SkimView({
           st.settleTimer = window.setTimeout(() => {
             st.settleTimer = null;
             resetPullVisuals();
-          }, SETTLE_MS);
+          }, SKIM_WHEEL_SETTLE_MS);
         }
       }
     };
@@ -470,7 +471,7 @@ export function SkimView({
 
   if (!deck) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-background">
+      <div className="min-h-dvh flex items-center justify-center p-4 bg-background text-foreground overscroll-none">
         <Link to="/explore" className="px-5 py-2.5 rounded-md bg-primary text-white font-semibold">
           {t('common.back_to_library')}
         </Link>
@@ -495,19 +496,19 @@ export function SkimView({
     : null;
 
   return (
-    <div className="min-h-screen flex flex-col bg-background text-foreground">
-      <header className="px-4 sm:px-8 h-12 border-b border-border bg-background flex items-center justify-between gap-4 z-30">
-        <div className="flex items-center gap-3 min-w-0">
+    <div className="min-h-dvh flex flex-col bg-background text-foreground overscroll-none overflow-x-hidden">
+      <header className="px-3 sm:px-8 min-h-12 py-1.5 sm:py-0 sm:h-12 border-b border-border bg-background flex flex-wrap sm:flex-nowrap items-center justify-between gap-x-3 gap-y-1.5 z-30">
+        <div className="flex items-center gap-2 sm:gap-3 min-w-0 flex-1 basis-[160px]">
           <button
             type="button"
             onClick={() => void navigate(`/deck/${deck.id}`)}
-            className="w-9 h-9 rounded-md text-muted-foreground hover:bg-muted flex items-center justify-center cursor-pointer"
+            className="w-8 h-8 sm:w-9 sm:h-9 shrink-0 rounded-md text-muted-foreground hover:bg-muted flex items-center justify-center cursor-pointer"
           >
             <ArrowLeft className="w-4 h-4" />
           </button>
           <div className="min-w-0">
             <h1 className="text-sm sm:text-base font-semibold truncate">{deck.title}</h1>
-            <p className="text-[11px] font-semibold text-muted-foreground">
+            <p className="text-[11px] font-semibold text-muted-foreground truncate whitespace-nowrap">
               {masteredIds.size} / {baseCards.length} mastered
             </p>
           </div>
@@ -520,14 +521,14 @@ export function SkimView({
           />
         </div>
 
-        <div className="flex items-center gap-1.5">
+        <div className="flex items-center gap-1 sm:gap-1.5 ml-auto shrink-0 max-w-full overflow-x-auto no-scrollbar">
           <StudyModeToggle mode={mode} onChange={onModeChange} />
           <button
             type="button"
             onClick={() =>
               setWebAnswerSide(preferences.answerSide === 'term' ? 'definition' : 'term')
             }
-            className="px-3 py-1.5 rounded-md bg-muted text-xs font-semibold flex items-center gap-1.5 cursor-pointer"
+            className="px-2.5 sm:px-3 py-1.5 rounded-md bg-muted text-xs font-semibold flex items-center gap-1.5 cursor-pointer shrink-0"
           >
             <ArrowDownUp className="w-3.5 h-3.5" />
             <span className="hidden sm:inline">
@@ -538,7 +539,7 @@ export function SkimView({
           <button
             type="button"
             onClick={() => setIsAutoSkim((a) => !a)}
-            className={`px-3 py-1.5 rounded-md text-xs font-semibold flex items-center gap-1 cursor-pointer ${
+            className={`px-2.5 sm:px-3 py-1.5 rounded-md text-xs font-semibold flex items-center gap-1 cursor-pointer shrink-0 ${
               isAutoSkim ? 'bg-muted text-foreground' : 'text-muted-foreground hover:bg-muted'
             }`}
           >
@@ -551,7 +552,7 @@ export function SkimView({
             onClick={toggleControls}
             aria-pressed={showControls}
             title={t('skim.controls')}
-            className={`w-9 h-9 rounded-md flex items-center justify-center cursor-pointer ${
+            className={`w-8 h-8 sm:w-9 sm:h-9 shrink-0 rounded-md flex items-center justify-center cursor-pointer ${
               showControls ? 'bg-muted text-foreground' : 'text-muted-foreground hover:bg-muted'
             }`}
           >
@@ -567,7 +568,7 @@ export function SkimView({
               setShuffleSeed(nextSeed);
               resetDeck(nextShuffle, nextSeed);
             }}
-            className={`w-9 h-9 rounded-md flex items-center justify-center cursor-pointer ${
+            className={`w-8 h-8 sm:w-9 sm:h-9 shrink-0 rounded-md flex items-center justify-center cursor-pointer ${
               isShuffled ? 'bg-muted text-foreground' : 'text-muted-foreground hover:bg-muted'
             }`}
           >
@@ -579,7 +580,7 @@ export function SkimView({
             onClick={() =>
               updateWebPreferences({ autoPlayAudio: !preferences.autoPlayAudio })
             }
-            className={`w-9 h-9 rounded-md flex items-center justify-center cursor-pointer ${
+            className={`w-8 h-8 sm:w-9 sm:h-9 shrink-0 rounded-md flex items-center justify-center cursor-pointer ${
               preferences.autoPlayAudio
                 ? 'bg-muted text-foreground'
                 : 'text-muted-foreground hover:bg-muted'
@@ -596,7 +597,7 @@ export function SkimView({
 
       <main ref={mainRef} className="flex-1 flex items-center justify-center p-4 sm:p-6">
         {isFinished || !currentCard || !webReelCard ? (
-          <div className="bubbly-card max-w-md w-full text-center text-balance space-y-6 p-10">
+          <div className="bubbly-card max-w-md w-full text-center text-balance space-y-6 p-6 sm:p-10">
             <div className="w-20 h-20 mx-auto rounded-xl text-muted-foreground bg-muted flex items-center justify-center">
               <Trophy className="w-10 h-10" />
             </div>
@@ -652,43 +653,43 @@ export function SkimView({
                     intervalLabels={intervalLabels}
                     onVerticalDragMove={handleVerticalDragMove}
                     onVerticalDragEnd={handleVerticalDragEnd}
-                    onSpeakFace={(face: SkimFace) => speakWebText(face.content, face.lang)}
+                    onSpeakFace={(face: SkimFace) => speakField(face, faces)}
                   />
                 </motion.div>
               </AnimatePresence>
             </div>
 
             {showControls && (
-              <div className="flex lg:flex-col items-center gap-3 w-full max-w-[440px] lg:w-auto">
-                <div className="flex lg:flex-col gap-2">
+              <div className="flex lg:flex-col items-center gap-2 sm:gap-3 w-full max-w-[440px] lg:w-auto">
+                <div className="flex lg:flex-col gap-1.5 sm:gap-2 shrink-0">
                   <button
                     type="button"
                     disabled={!canGoPrevious}
                     onClick={handleCommitPrevious}
-                    className="w-11 h-11 rounded-md bg-card border border-border flex items-center justify-center disabled:opacity-30 cursor-pointer"
+                    className="w-10 h-10 sm:w-11 sm:h-11 rounded-md bg-card border border-border flex items-center justify-center disabled:opacity-30 cursor-pointer"
                   >
                     <ChevronUp className="w-5 h-5" />
                   </button>
                   <button
                     type="button"
                     onClick={() => handleCommitNext(Rating.Good)}
-                    className="w-11 h-11 rounded-md bg-card border border-border flex items-center justify-center cursor-pointer"
+                    className="w-10 h-10 sm:w-11 sm:h-11 rounded-md bg-card border border-border flex items-center justify-center cursor-pointer"
                   >
                     <ChevronDown className="w-5 h-5" />
                   </button>
                 </div>
-                <div className="flex-1 grid grid-cols-4 lg:grid-cols-1 gap-2 w-full lg:w-32">
+                <div className="flex-1 min-w-0 grid grid-cols-4 lg:grid-cols-1 gap-1.5 sm:gap-2 w-full lg:w-32">
                   {[Rating.Again, Rating.Hard, Rating.Good, Rating.Easy].map((r) => (
                     <button
                       key={r}
                       type="button"
                       onClick={() => handleCommitNext(r)}
-                      className="px-3 py-2.5 rounded-lg bg-card border border-border hover:bg-muted font-semibold text-xs flex flex-col items-center lg:items-start cursor-pointer"
+                      className="px-1.5 sm:px-3 py-2.5 rounded-lg bg-card border border-border hover:bg-muted font-semibold text-xs flex flex-col items-center lg:items-start cursor-pointer min-w-0"
                     >
-                      <span>
+                      <span className="truncate max-w-full">
                         {ratingLabel(t, r)}
                       </span>
-                      <span className="text-[10px] opacity-60">{intervalLabels[r]}</span>
+                      <span className="text-[10px] opacity-60 truncate max-w-full">{intervalLabels[r]}</span>
                     </button>
                   ))}
                 </div>

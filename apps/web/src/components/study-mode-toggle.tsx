@@ -17,14 +17,14 @@ export function StudyModeToggle({
 }) {
   const { t } = useI18n();
   return (
-    <div className="flex items-center gap-0.5 mr-1" role="group" aria-label={t('study.mode')}>
+    <div className="flex items-center gap-0.5 sm:mr-1 shrink-0" role="group" aria-label={t('study.mode')}>
       {MODES.map((m) => (
         <button
           key={m.id}
           type="button"
           onClick={() => onChange(m.id)}
           aria-pressed={mode === m.id}
-          className={`h-8 px-2.5 rounded-md text-xs cursor-pointer transition-colors ${
+          className={`h-8 px-2 sm:px-2.5 rounded-md text-xs whitespace-nowrap cursor-pointer transition-colors ${
             mode === m.id
               ? 'bg-muted text-foreground font-medium'
               : 'text-muted-foreground hover:text-foreground'

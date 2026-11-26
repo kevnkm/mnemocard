@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router';
 import {
   ArrowLeft,
@@ -26,10 +26,11 @@ import {
 } from '@mnemocard/core';
 import { type EvaluateRecallOutput, type HybridResult } from '@mnemocard/ai';
 
+import { Navbar } from '@/components/navbar';
 import { useI18n } from '@/i18n';
 import { getHybridAIClient } from '@/lib/firebase';
-import { recordWebCardReview, useWebStore } from '@/lib/local-store';
-import { speakWebText } from '@/lib/speech';
+import { fetchWebDeckById, recordWebCardReview, useWebStore } from '@/lib/local-store';
+import { speakField, speakWebText } from '@/lib/speech';
 
 const ALL_TYPES: TestQuestionType[] = ['multiple_choice', 'written', 'true_false', 'matching'];
 const PAIR_COLORS = ['#3B82F6', '#A855F7', '#22C55E', '#F97316', '#EC4899'];
@@ -61,8 +62,20 @@ export default function TestPage() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const { t, locale } = useI18n();
-  const { decks } = useWebStore();
+  const { decks, decksStatus } = useWebStore();
   const deck = decks.find((d) => d.id === id) ?? null;
+  const [fetchedId, setFetchedId] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (deck || !id) return;
+    let active = true;
+    void fetchWebDeckById(id).finally(() => {
+      if (active) setFetchedId(id);
+    });
+    return () => {
+      active = false;
+    };
+  }, [deck, id]);
 
   const testCards = useMemo(
     () => (deck ? toTestCards(deck.cards, deck.fieldConfigs) : []),
@@ -85,14 +98,34 @@ export default function TestPage() {
   const [selectedPrompt, setSelectedPrompt] = useState<string | null>(null);
 
   if (!deck) {
+    const isLoading = decksStatus === 'loading' || (Boolean(id) && fetchedId !== id);
     return (
-      <div className="min-h-screen flex items-center justify-center bg-background">
-        <Link to="/explore" className="px-5 py-2.5 rounded-md bg-primary text-white font-semibold">
-          {t('common.back_to_library')}
-        </Link>
+      <div className="min-h-dvh flex flex-col bg-background text-foreground overscroll-none">
+        <Navbar />
+        {!isLoading && (
+          <div className="flex-1 flex flex-col items-center justify-center p-6 text-center space-y-4">
+            <h1 className="text-lg font-semibold">{t('common.deck_not_found')}</h1>
+            <Link to="/explore" className="text-sm text-muted-foreground underline">
+              {t('common.back_to_library')}
+            </Link>
+          </div>
+        )}
       </div>
     );
   }
+
+  // toTestCards takes prompts from the first text field, so speech reads that field of the card.
+  const promptFieldIdx = deck.fieldConfigs.findIndex((f) => f.type !== 'image' && f.type !== 'audio');
+  const speakPrompt = (cardId: string, prompt: string) => {
+    const card = deck.cards.find((c) => c.id === cardId);
+    const fields = deck.fieldConfigs.map((cfg, i) => ({
+      ...cfg,
+      content: (card?.content[i] ?? '').toString(),
+    }));
+    const field = fields[promptFieldIdx];
+    if (field && card) speakField(field, fields);
+    else speakWebText(prompt);
+  };
 
   const maxQuestions = testCards.length;
   const clampedCount = Math.min(count, Math.max(1, maxQuestions));
@@ -179,20 +212,20 @@ export default function TestPage() {
   const currentQuestion = questions[current];
 
   return (
-    <div className="min-h-screen flex flex-col bg-background text-foreground">
-      <header className="px-4 sm:px-8 h-12 border-b border-border bg-background flex items-center justify-between gap-4 z-30">
-        <div className="flex items-center gap-3">
+    <div className="min-h-dvh flex flex-col bg-background text-foreground overscroll-none">
+      <header className="px-3 sm:px-8 h-12 border-b border-border bg-background flex items-center justify-between gap-3 sm:gap-4 z-30">
+        <div className="flex items-center gap-2 sm:gap-3 min-w-0 flex-1">
           <button
             type="button"
             onClick={() => void navigate(`/deck/${deck.id}`)}
-            className="w-9 h-9 rounded-md text-muted-foreground hover:bg-muted flex items-center justify-center cursor-pointer"
+            className="w-8 h-8 sm:w-9 sm:h-9 shrink-0 rounded-md text-muted-foreground hover:bg-muted flex items-center justify-center cursor-pointer"
           >
             <ArrowLeft className="w-4 h-4" />
           </button>
-          <div>
-            <h1 className="text-sm sm:text-base font-semibold">{t('test.title', { deck: deck.title })}</h1>
+          <div className="min-w-0">
+            <h1 className="text-sm sm:text-base font-semibold truncate">{t('test.title', { deck: deck.title })}</h1>
             {phase === 'running' && (
-              <p className="text-[11px] font-semibold text-muted-foreground">
+              <p className="text-[11px] font-semibold text-muted-foreground truncate whitespace-nowrap">
                 {t('test.question_n', { current: current + 1, total: questions.length })}
               </p>
             )}
@@ -203,7 +236,7 @@ export default function TestPage() {
           <button
             type="button"
             onClick={() => setPhase('setup')}
-            className="px-4 py-1.5 rounded-md bg-muted text-xs font-semibold cursor-pointer"
+            className="px-3 sm:px-4 py-1.5 rounded-md bg-muted text-xs font-semibold cursor-pointer shrink-0 whitespace-nowrap"
           >
             {t('test.restart')}
           </button>
@@ -354,7 +387,7 @@ export default function TestPage() {
               {currentQuestion.type !== 'matching' && (
                 <button
                   type="button"
-                  onClick={() => speakWebText(currentQuestion.prompt)}
+                  onClick={() => speakPrompt(currentQuestion.cardId, currentQuestion.prompt)}
                   className="w-9 h-9 rounded-md bg-card border border-border flex items-center justify-center cursor-pointer"
                 >
                   <Volume2 className="w-4 h-4" />
@@ -400,11 +433,11 @@ export default function TestPage() {
                                 : 'border-border hover:bg-muted/60'
                         }`}
                       >
-                        <div className="flex items-center gap-3">
-                          <span className="w-7 h-7 rounded-md border border-current flex items-center justify-center text-xs font-semibold">
+                        <div className="flex items-center gap-3 min-w-0">
+                          <span className="w-7 h-7 shrink-0 rounded-md border border-current flex items-center justify-center text-xs font-semibold">
                             {String.fromCharCode(65 + idx)}
                           </span>
-                          <span>{opt}</span>
+                          <span className="min-w-0 break-words">{opt}</span>
                         </div>
                         {isCorrectOpt && <Check className="w-4 h-4" />}
                         {isWrongOpt && <X className="w-4 h-4" />}
@@ -607,7 +640,7 @@ export default function TestPage() {
                                 ? { borderColor: pairColor, backgroundColor: `${pairColor}18` }
                                 : undefined
                             }
-                            className={`w-full p-3 rounded-lg border text-left text-sm font-semibold cursor-pointer ${
+                            className={`w-full p-2.5 sm:p-3 rounded-lg border text-left text-xs sm:text-sm font-semibold [overflow-wrap:anywhere] cursor-pointer ${
                               isSel ? 'border-foreground/60 ring-2 ring-foreground/10' : 'border-border'
                             }`}
                           >
@@ -664,7 +697,7 @@ export default function TestPage() {
                                 ? { borderColor: pairColor, backgroundColor: `${pairColor}18` }
                                 : undefined
                             }
-                            className="w-full p-3 rounded-lg border border-border text-left text-sm font-semibold cursor-pointer"
+                            className="w-full p-2.5 sm:p-3 rounded-lg border border-border text-left text-xs sm:text-sm font-semibold [overflow-wrap:anywhere] cursor-pointer"
                           >
                             {a.text}
                           </button>
@@ -766,13 +799,13 @@ export default function TestPage() {
                       }`}
                     >
                       <div className="flex items-center justify-between gap-2 font-semibold text-sm">
-                        <div className="flex items-center gap-2">
+                        <div className="flex items-center gap-2 min-w-0">
                           {ok ? (
-                            <Check className="w-4 h-4 text-emerald-500" />
+                            <Check className="w-4 h-4 shrink-0 text-emerald-500" />
                           ) : (
-                            <X className="w-4 h-4 text-red-500" />
+                            <X className="w-4 h-4 shrink-0 text-red-500" />
                           )}
-                          <span>
+                          <span className="min-w-0 break-words">
                             {q.type === 'matching'
                               ? t('test.matching_group')
                               : q.prompt}

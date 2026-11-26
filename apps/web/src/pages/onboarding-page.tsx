@@ -154,7 +154,7 @@ export default function OnboardingPage() {
   };
 
   return (
-    <div className="min-h-screen flex flex-col bg-background text-foreground">
+    <div className="min-h-dvh flex flex-col bg-background text-foreground">
       <header className="mx-auto max-w-2xl w-full px-4 sm:px-6 h-12 flex items-center justify-between">
         <Link to="/" className="flex items-center gap-2 font-semibold tracking-tight">
           <img src="/mnemocard.svg" alt="" className="w-6 h-6" />

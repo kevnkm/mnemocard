@@ -30,12 +30,12 @@ export default function SettingsPage() {
   };
 
   const segBtn = (active: boolean) =>
-    `h-8 px-3 rounded-md text-sm cursor-pointer transition-colors ${
+    `h-8 px-2.5 sm:px-3 rounded-md text-sm cursor-pointer transition-colors ${
       active ? 'bg-muted text-foreground font-medium' : 'text-muted-foreground hover:text-foreground'
     }`;
 
   return (
-    <div className="min-h-screen flex flex-col bg-background text-foreground">
+    <div className="min-h-dvh flex flex-col bg-background text-foreground">
       <Navbar />
 
       <main className="max-w-5xl w-full mx-auto px-4 sm:px-6 pt-8 pb-16 space-y-8">
@@ -44,9 +44,9 @@ export default function SettingsPage() {
         <section className="space-y-3">
           <h2 className="text-sm font-medium text-muted-foreground">{t('settings.study')}</h2>
           <div className="divide-y divide-border border-y border-border">
-            <div className="flex items-center justify-between h-12">
+            <div className="flex flex-wrap items-center justify-between gap-2 py-2 min-h-12">
               <span className="text-sm">{t('settings.daily_goal')}</span>
-              <div className="flex gap-1">
+              <div className="flex flex-wrap gap-1">
                 {[5, 15, 30, 60].map((mins) => (
                   <button
                     key={mins}
@@ -59,9 +59,9 @@ export default function SettingsPage() {
                 ))}
               </div>
             </div>
-            <div className="flex items-center justify-between h-12">
+            <div className="flex flex-wrap items-center justify-between gap-2 py-2 min-h-12">
               <span className="text-sm">{t('settings.answer_side')}</span>
-              <div className="flex gap-1">
+              <div className="flex flex-wrap gap-1">
                 {(['term', 'definition'] as const).map((side) => (
                   <button
                     key={side}

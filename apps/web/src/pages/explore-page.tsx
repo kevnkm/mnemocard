@@ -264,13 +264,13 @@ export default function ExplorePage() {
     : LayoutGrid;
 
   return (
-    <div className="min-h-screen flex flex-col bg-background text-foreground">
+    <div className="min-h-dvh flex flex-col bg-background text-foreground">
       <Navbar />
 
       <main className="max-w-5xl w-full mx-auto px-4 sm:px-6 pt-8 pb-16 space-y-6">
         {activeCategory ? (
           <div className="space-y-4">
-            <nav aria-label="Breadcrumb" className="flex items-center gap-1.5 text-xs text-muted-foreground">
+            <nav aria-label="Breadcrumb" className="flex flex-wrap items-center gap-1.5 text-xs text-muted-foreground">
               <Link to="/explore" className="hover:text-foreground hover:underline">
                 {t('nav.explore')}
               </Link>

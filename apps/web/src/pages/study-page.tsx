@@ -14,16 +14,18 @@ import {
 import { Rating } from '@mnemocard/core';
 
 import {
+  fetchWebDeckById,
   formatWebInterval,
   recordWebCardReview,
   updateWebPreferences,
   useWebStore,
 } from '@/lib/local-store';
+import { Navbar } from '@/components/navbar';
 import { SkimView } from '@/components/skim-view';
 import { MathText } from '@/components/math-text';
 import { fieldLabel, useI18n } from '@/i18n';
 import { StudyModeToggle, type StudyMode } from '@/components/study-mode-toggle';
-import { speakWebText, stopWebSpeech } from '@/lib/speech';
+import { AUTO_PLAY_DELAY_MS, canSpeakField, speakField, stopWebSpeech } from '@/lib/speech';
 
 function CardsView({
   mode,
@@ -89,9 +91,9 @@ function CardsView({
 
   useEffect(() => {
     if (!preferences.autoPlayAudio || !currentCard || isFinished) return;
-    const text = faces[0]?.content;
-    if (text) {
-      const timer = setTimeout(() => speakWebText(text, faces[0]?.lang), 180);
+    const first = faces[0];
+    if (first?.content) {
+      const timer = setTimeout(() => speakField(first, faces), AUTO_PLAY_DELAY_MS);
       return () => {
         clearTimeout(timer);
         stopWebSpeech();
@@ -156,7 +158,7 @@ function CardsView({
 
   if (!deck) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-background">
+      <div className="min-h-dvh flex items-center justify-center p-4 bg-background text-foreground overscroll-none">
         <Link to="/explore" className="px-5 py-2.5 rounded-md bg-primary text-white font-semibold">
           {t('common.back_to_library')}
         </Link>
@@ -174,21 +176,21 @@ function CardsView({
     faces.length <= 2 ? 0 : Math.round(stageWidth / (2 * Math.tan(Math.PI / faces.length)));
 
   return (
-    <div className="min-h-screen flex flex-col bg-background text-foreground overflow-hidden">
+    <div className="min-h-dvh flex flex-col bg-background text-foreground overscroll-none overflow-hidden">
       {/* Compact Study Header */}
-      <header className="px-4 sm:px-8 h-12 border-b border-border bg-background flex items-center justify-between gap-4 z-30">
-        <div className="flex items-center gap-3 min-w-0">
+      <header className="px-3 sm:px-8 min-h-12 py-1.5 sm:py-0 sm:h-12 border-b border-border bg-background flex flex-wrap sm:flex-nowrap items-center justify-between gap-x-3 gap-y-1.5 z-30">
+        <div className="flex items-center gap-2 sm:gap-3 min-w-0 flex-1 basis-[160px]">
           <button
             type="button"
             onClick={() => void navigate(`/deck/${deck.id}`)}
-            className="w-9 h-9 rounded-md text-muted-foreground hover:bg-muted flex items-center justify-center cursor-pointer"
+            className="w-8 h-8 sm:w-9 sm:h-9 shrink-0 rounded-md text-muted-foreground hover:bg-muted flex items-center justify-center cursor-pointer"
             aria-label={t('common.back_to_deck')}
           >
             <ArrowLeft className="w-4 h-4" />
           </button>
           <div className="min-w-0">
             <h1 className="text-sm sm:text-base font-semibold truncate">{deck.title}</h1>
-            <p className="text-[11px] font-semibold text-muted-foreground">
+            <p className="text-[11px] font-semibold text-muted-foreground truncate whitespace-nowrap">
               {Math.min(currentIndex + 1, cards.length)} / {cards.length}
             </p>
           </div>
@@ -203,12 +205,12 @@ function CardsView({
         </div>
 
         {/* Controls */}
-        <div className="flex items-center gap-1.5">
+        <div className="flex items-center gap-1 sm:gap-1.5 ml-auto shrink-0 max-w-full overflow-x-auto no-scrollbar">
           <StudyModeToggle mode={mode} onChange={onModeChange} />
           <button
             type="button"
             onClick={() => setIsSwapped((s) => !s)}
-            className={`w-9 h-9 rounded-md flex items-center justify-center transition-colors cursor-pointer ${
+            className={`w-8 h-8 sm:w-9 sm:h-9 shrink-0 rounded-md flex items-center justify-center transition-colors cursor-pointer ${
               isSwapped ? 'bg-muted text-foreground' : 'text-muted-foreground hover:bg-muted'
             }`}
             title={t('study.swap')}
@@ -225,7 +227,7 @@ function CardsView({
               setCurrentIndex(0);
               setFaceIndex(0);
                     }}
-            className={`w-9 h-9 rounded-md flex items-center justify-center transition-colors cursor-pointer ${
+            className={`w-8 h-8 sm:w-9 sm:h-9 shrink-0 rounded-md flex items-center justify-center transition-colors cursor-pointer ${
               isShuffled ? 'bg-muted text-foreground' : 'text-muted-foreground hover:bg-muted'
             }`}
             title={t('study.shuffle')}
@@ -237,7 +239,7 @@ function CardsView({
             onClick={() =>
               updateWebPreferences({ autoPlayAudio: !preferences.autoPlayAudio })
             }
-            className={`w-9 h-9 rounded-md flex items-center justify-center transition-colors cursor-pointer ${
+            className={`w-8 h-8 sm:w-9 sm:h-9 shrink-0 rounded-md flex items-center justify-center transition-colors cursor-pointer ${
               preferences.autoPlayAudio
                 ? 'bg-muted text-foreground'
                 : 'text-muted-foreground hover:bg-muted'
@@ -260,7 +262,7 @@ function CardsView({
               key="done"
               initial={{ opacity: 0, scale: 0.92 }}
               animate={{ opacity: 1, scale: 1 }}
-              className="bubbly-card max-w-lg w-full p-10 text-center text-balance space-y-8"
+              className="bubbly-card max-w-lg w-full p-6 sm:p-10 text-center text-balance space-y-8"
             >
               <div className="w-20 h-20 rounded-xl bg-gradient-to-br from-amber-400 to-orange-500 text-white flex items-center justify-center mx-auto ">
                 <Trophy className="w-10 h-10" />
@@ -315,7 +317,7 @@ function CardsView({
               {/* 3D Prism Card Stage */}
               <div
                 ref={stageRef}
-                className="w-full aspect-[4/3] md:aspect-[3/2] max-h-[460px] perspective-2000"
+                className="w-full min-h-[260px] sm:min-h-0 aspect-[4/3] md:aspect-[3/2] max-h-[460px] perspective-2000"
               >
                   <motion.div
                     className="w-full h-full relative preserve-3d cursor-pointer"
@@ -359,16 +361,18 @@ function CardsView({
                           )}
                         </div>
 
-                        <button
-                          type="button"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            speakWebText(face.content, face.lang);
-                          }}
-                          className="shrink-0 p-2 rounded-lg text-muted-foreground hover:bg-muted hover:text-foreground cursor-pointer"
-                        >
-                          <Volume2 className="w-5 h-5" />
-                        </button>
+                        {canSpeakField(face, faces) && (
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              speakField(face, faces);
+                            }}
+                            className="shrink-0 p-2 rounded-lg text-muted-foreground hover:bg-muted hover:text-foreground cursor-pointer"
+                          >
+                            <Volume2 className="w-5 h-5" />
+                          </button>
+                        )}
                       </div>
                     ))}
                   </motion.div>
@@ -418,12 +422,29 @@ function readStoredMode(): StudyMode {
 function contentSizeClass(length: number): string {
   if (length > 220) return 'text-base sm:text-lg';
   if (length > 100) return 'text-xl sm:text-2xl';
-  if (length > 40) return 'text-2xl sm:text-3xl';
-  return 'text-3xl sm:text-4xl lg:text-5xl';
+  if (length > 40) return 'text-xl sm:text-3xl';
+  return 'text-2xl sm:text-4xl lg:text-5xl';
 }
 
 export default function StudyPage() {
+  const { id } = useParams<{ id: string }>();
+  const { t } = useI18n();
+  const { decks, decksStatus } = useWebStore();
+  const deck = decks.find((d) => d.id === id) ?? null;
+  const [fetchedId, setFetchedId] = useState<string | null>(null);
   const [mode, setModeState] = useState<StudyMode>(readStoredMode);
+
+  useEffect(() => {
+    if (deck || !id) return;
+    let active = true;
+    void fetchWebDeckById(id).finally(() => {
+      if (active) setFetchedId(id);
+    });
+    return () => {
+      active = false;
+    };
+  }, [deck, id]);
+
   const setMode = useCallback((next: StudyMode) => {
     setModeState(next);
     try {
@@ -432,6 +453,24 @@ export default function StudyPage() {
       /* storage unavailable; mode just won't persist */
     }
   }, []);
+
+  if (!deck) {
+    const isLoading = decksStatus === 'loading' || (Boolean(id) && fetchedId !== id);
+    return (
+      <div className="min-h-dvh flex flex-col bg-background text-foreground overscroll-none">
+        <Navbar />
+        {!isLoading && (
+          <div className="flex-1 flex flex-col items-center justify-center p-6 text-center space-y-4">
+            <h1 className="text-lg font-semibold">{t('common.deck_not_found')}</h1>
+            <Link to="/explore" className="text-sm text-muted-foreground underline">
+              {t('common.back_to_library')}
+            </Link>
+          </div>
+        )}
+      </div>
+    );
+  }
+
   return mode === 'skim' ? (
     <SkimView mode={mode} onModeChange={setMode} />
   ) : (

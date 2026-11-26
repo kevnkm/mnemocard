@@ -7,6 +7,7 @@ import {
 } from 'lucide-react';
 
 import { MathText } from '@/components/math-text';
+import { canSpeakField } from '@/lib/speech';
 import { fieldLabel, ratingLabel, useI18n } from '@/i18n';
 import {
   Rating,
@@ -218,20 +219,9 @@ export function ReelCard({
       onPointerMove={handlePointerMove}
       onPointerUp={finishPointer}
       onPointerCancel={finishPointer}
-      className="relative w-full h-full rounded-2xl bg-card border border-border  overflow-hidden select-none touch-none flex flex-col justify-between"
+      className="relative w-full h-full rounded-2xl bg-card select-none touch-none"
     >
-      {isAutoSkim && (
-        <div className="absolute top-0 inset-x-0 h-1 bg-muted z-30">
-          <motion.div
-            key={`${card.id}-${safeFaceIndex}`}
-            initial={{ width: '0%' }}
-            animate={{ width: '100%' }}
-            transition={{ duration: 3, ease: 'linear' }}
-            className="h-full bg-primary"
-          />
-        </div>
-      )}
-
+      <div className="relative w-full h-full rounded-2xl overflow-hidden flex flex-col justify-between">
       {/* Top Overlay Header */}
       <div className="relative z-20 flex items-center justify-between px-5 pt-5 pb-2 gap-2">
         <div className="flex items-center flex-wrap gap-1.5 min-w-0">
@@ -245,10 +235,11 @@ export function ReelCard({
           )}
         </div>
 
-        {faces.length > 1 && (
+        {(faces.length > 1 || (isAutoSkim && faces.length > 0)) && (
           <div className="flex items-center gap-1.5" data-no-drag="true">
             {faces.map((f, idx) => {
               const factor = Math.max(0, Math.min(1, 1 - Math.abs(liveFaceProgress - idx)));
+              const isAutoLoadingStep = isAutoSkim && idx === safeFaceIndex && dragX === 0;
               return (
                 <button
                   key={`${f.idx}-${idx}`}
@@ -259,20 +250,30 @@ export function ReelCard({
                   }}
                   aria-label={fieldLabel(t, f.label)}
                   style={{
-                    width: `${6 + factor * 14}px`,
+                    width: `${6 + factor * (isAutoSkim ? 22 : 14)}px`,
                     transition:
                       dragX === 0 ? 'width 200ms cubic-bezier(0.22, 1, 0.36, 1)' : 'none',
                   }}
                   className="relative h-1.5 rounded-full overflow-hidden bg-muted-foreground/30 hover:bg-muted-foreground/50 cursor-pointer"
                 >
-                  <span
-                    style={{
-                      opacity: factor,
-                      transition:
-                        dragX === 0 ? 'opacity 200ms cubic-bezier(0.22, 1, 0.36, 1)' : 'none',
-                    }}
-                    className="absolute inset-0 rounded-md bg-primary"
-                  />
+                  {isAutoLoadingStep ? (
+                    <motion.span
+                      key={`${card.id}-${safeFaceIndex}`}
+                      initial={{ width: '0%' }}
+                      animate={{ width: '100%' }}
+                      transition={{ duration: 3, ease: 'linear' }}
+                      className="absolute inset-y-0 left-0 rounded-full bg-primary"
+                    />
+                  ) : (
+                    <span
+                      style={{
+                        opacity: factor,
+                        transition:
+                          dragX === 0 ? 'opacity 200ms cubic-bezier(0.22, 1, 0.36, 1)' : 'none',
+                      }}
+                      className="absolute inset-0 rounded-full bg-primary"
+                    />
+                  )}
                 </button>
               );
             })}
@@ -349,7 +350,7 @@ export function ReelCard({
                 </h2>
               )}
 
-              {face.mediaKind === 'text' && face.content && (
+              {face.mediaKind === 'text' && canSpeakField(face, faces) && (
                 <button
                   type="button"
                   data-no-drag="true"
@@ -397,13 +398,7 @@ export function ReelCard({
 
       {/* Vertical Pull-to-Rate FSRS Overlay */}
       {activePullStyle && (
-        <div
-          style={{
-            borderColor: activePullStyle.color,
-            backgroundColor: `${activePullStyle.color}14`,
-          }}
-          className="absolute inset-0 z-30 pointer-events-none border-4 rounded-2xl flex flex-col items-center justify-end pb-20 px-5 transition-colors"
-        >
+        <div className="absolute inset-0 z-30 pointer-events-none flex flex-col items-center justify-end pb-20 px-5">
           <div
             style={{ backgroundColor: activePullStyle.color }}
             className="px-5 py-2.5 rounded-md text-white  flex items-center gap-2.5"
@@ -414,7 +409,7 @@ export function ReelCard({
             )}
           </div>
 
-          <div className="mt-3 flex items-center gap-1.5 bg-background/95 px-3 py-1.5 rounded-md border border-border ">
+          <div className="mt-3 flex flex-wrap items-center justify-center gap-1.5 bg-background/95 px-2.5 sm:px-3 py-1.5 rounded-md border border-border max-w-full">
             {[Rating.Again, Rating.Hard, Rating.Good, Rating.Easy].map((r) => {
               const meta = { label: ratingLabel(t, r), color: RATING_COLORS[r] };
               const active = r === pullRating;
@@ -432,9 +427,19 @@ export function ReelCard({
               );
             })}
           </div>
-
         </div>
       )}
+      </div>
+
+      {/* Single continuous border overlay: 1px default or 4px eval highlight */}
+      <div
+        style={{
+          boxShadow: activePullStyle
+            ? `inset 0 0 0 4px ${activePullStyle.color}`
+            : 'inset 0 0 0 1px var(--border)',
+        }}
+        className="pointer-events-none absolute inset-0 z-30 rounded-2xl"
+      />
     </div>
   );
 }
