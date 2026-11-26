@@ -23,6 +23,7 @@ import {
   normalizeGeneratedDeck,
   normalizeRecallOutput,
 } from './prompts';
+import { fieldOutputLangs, planInference, toLangCode, type InferencePlan } from './output-languages';
 import {
   HybridInferenceMode,
   HybridInferenceSource,
@@ -203,16 +204,18 @@ export function createWebHybridAIClient(config: WebHybridAIConfig): HybridAIClie
   const ai = getAI(config.firebaseApp, { backend: new GoogleAIBackend() });
 
   function getModel(
+    plan: InferencePlan,
     responseConstraint?: object,
     responseSchema?: ReturnType<typeof Schema.object>,
     thinkingLevel: ThinkingLevelOption = defaultThinkingLevel,
     cloudModelName: string = resolveCloudModel()
   ): GenerativeModel {
     return getGenerativeModel(ai, {
-      mode: toSdkInferenceMode(currentMode),
-      onDeviceParams: responseConstraint
-        ? { promptOptions: { responseConstraint } }
-        : undefined,
+      mode: toSdkInferenceMode(plan.mode),
+      onDeviceParams: {
+        createOptions: { expectedOutputs: [{ type: 'text', languages: plan.onDeviceLangs }] },
+        ...(responseConstraint ? { promptOptions: { responseConstraint } } : {}),
+      },
       inCloudParams: {
         model: cloudModelName,
         generationConfig: {
@@ -229,6 +232,7 @@ export function createWebHybridAIClient(config: WebHybridAIConfig): HybridAIClie
 
   async function runStructuredPrompt<T>(
     prompt: string,
+    outputLangs: readonly string[],
     responseConstraint?: object,
     responseSchema?: ReturnType<typeof Schema.object>,
     options?: GenerateStreamHandlers
@@ -236,6 +240,7 @@ export function createWebHybridAIClient(config: WebHybridAIConfig): HybridAIClie
     const startedAt = performance.now();
     const cloudModelName = resolveCloudModel();
     const model = getModel(
+      planInference(currentMode, outputLangs),
       responseConstraint,
       responseSchema,
       options?.thinkingLevel,
@@ -268,16 +273,6 @@ export function createWebHybridAIClient(config: WebHybridAIConfig): HybridAIClie
     const thoughtsTokenCount = usage?.thoughtsTokenCount;
     const outputTokenCount = usage?.candidatesTokenCount;
 
-    if (thoughtsTokenCount !== undefined || outputTokenCount !== undefined) {
-      console.info('[AI Telemetry]', {
-        model: cloudModelName,
-        inferenceSource: source,
-        thoughtsTokenCount,
-        outputTokenCount,
-        totalTokenCount: usage?.totalTokenCount,
-      });
-    }
-
     return {
       parsed: extractJsonObject<T>(rawText),
       telemetry: {
@@ -308,6 +303,8 @@ export function createWebHybridAIClient(config: WebHybridAIConfig): HybridAIClie
       const prompt = buildGenerateDeckPrompt(input);
       const { parsed, telemetry } = await runStructuredPrompt<Partial<GeneratedDeckOutput>>(
         prompt,
+        // The title and description use `language`, and each field has its own.
+        [toLangCode(input.language), ...fieldOutputLangs(input.fieldConfigs ?? [])],
         DECK_JSON_SCHEMA,
         DECK_FIREBASE_SCHEMA,
         options
@@ -325,6 +322,8 @@ export function createWebHybridAIClient(config: WebHybridAIConfig): HybridAIClie
       const prompt = buildFillFieldsPrompt(input);
       const { parsed, telemetry } = await runStructuredPrompt<Partial<FillDeckFieldsOutput>>(
         prompt,
+        // The reply repeats the filled cells too, so every field's language is output.
+        fieldOutputLangs(input.fieldConfigs),
         FILL_DECK_JSON_SCHEMA,
         FILL_DECK_FIREBASE_SCHEMA,
         { thinkingLevel: 'low', ...options }
@@ -342,6 +341,7 @@ export function createWebHybridAIClient(config: WebHybridAIConfig): HybridAIClie
       const prompt = buildEvaluateRecallPrompt(input);
       const { parsed, telemetry } = await runStructuredPrompt<Partial<EvaluateRecallOutput>>(
         prompt,
+        [toLangCode(input.language)],
         RECALL_JSON_SCHEMA,
         RECALL_FIREBASE_SCHEMA,
         options

@@ -143,7 +143,7 @@ cd apps/android
 
 ### On-Device AI in Chrome
 
-Gemini Nano runs through Chrome's built-in [Prompt API](https://developer.chrome.com/docs/ai/prompt-api) on desktop. See that page for hardware requirements and how to enable it. If Chrome reports the model as downloadable, the deck generator shows a button to download it. With Firebase credentials, the web app defaults to `PREFER_ON_DEVICE` and falls back to the cloud when the on-device model can't be used. With no credentials, the app still runs with a placeholder config in `ONLY_ON_DEVICE` mode.
+Gemini Nano runs through Chrome's built-in [Prompt API](https://developer.chrome.com/docs/ai/prompt-api) on desktop. See that page for hardware requirements and how to enable it. If Chrome reports the model as downloadable, the deck generator shows a button to download it. With Firebase credentials, the web app defaults to `PREFER_ON_DEVICE` and falls back to the cloud when the on-device model can't be used. Chrome's model only supports output in English, French, German, Japanese and Spanish, so requests that need any other language go straight to the cloud. In `ONLY_ON_DEVICE` mode they stay on the device, where results may be poor. With no credentials, the app still runs with a placeholder config in `ONLY_ON_DEVICE` mode.
 
 ### Remote Config (optional)
 

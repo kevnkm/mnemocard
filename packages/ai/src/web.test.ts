@@ -254,4 +254,96 @@ describe('createWebHybridAIClient thought streaming', () => {
     expect(first.telemetry.runtimeLabel).toContain('model-a');
     expect(second.telemetry.runtimeLabel).toContain('model-b');
   });
+
+  describe('output languages', () => {
+    const deckJson = JSON.stringify({ title: 'T', description: 'D', cards: [{ content: ['a', 'b'] }] });
+    const field = (label: string, lang: string) => ({
+      label,
+      type: 'text' as const,
+      lang,
+      role: 'none' as const,
+    });
+
+    beforeEach(() => {
+      mockGenerateContentStream.mockImplementation(async () =>
+        createFakeStream([], { text: () => deckJson, inferenceSource: 'in_cloud' })
+      );
+    });
+
+    async function paramsForDeck(mode: HybridInferenceMode, langs: string[]) {
+      const client = createWebHybridAIClient({ firebaseApp: fakeApp, initialMode: mode });
+      await client.generateDeck({
+        topicOrNotes: 'Travel',
+        cardCount: 1,
+        fieldConfigs: langs.map((lang) => field('definition', lang)),
+      });
+      return mockGetGenerativeModel.mock.lastCall![1];
+    }
+
+    const declared = (languages: string[]) => ({
+      createOptions: { expectedOutputs: [{ type: 'text', languages }] },
+    });
+
+    it('declares every supported language and keeps the selected mode', async () => {
+      const params = await paramsForDeck(HybridInferenceMode.PREFER_ON_DEVICE, ['fr', 'ja']);
+      expect(params.mode).toBe('prefer_on_device');
+      expect(params.onDeviceParams).toMatchObject(declared(['en', 'fr', 'ja']));
+    });
+
+    it.each([HybridInferenceMode.PREFER_ON_DEVICE, HybridInferenceMode.PREFER_IN_CLOUD])(
+      'uses only the cloud for an unsupported language in %s',
+      async (mode) => {
+        const params = await paramsForDeck(mode, ['en', 'ko']);
+        expect(params.mode).toBe('only_in_cloud');
+      }
+    );
+
+    it('never leaves the device in ONLY_ON_DEVICE', async () => {
+      const params = await paramsForDeck(HybridInferenceMode.ONLY_ON_DEVICE, ['ko', 'zh-Hant']);
+      expect(params.mode).toBe('only_on_device');
+      expect(params.onDeviceParams).toMatchObject(declared(['en']));
+    });
+
+    it('does not change the selected mode for later requests', async () => {
+      const client = createWebHybridAIClient({
+        firebaseApp: fakeApp,
+        initialMode: HybridInferenceMode.PREFER_ON_DEVICE,
+      });
+      const input = { topicOrNotes: 'Travel', cardCount: 1 };
+      const korean = await client.generateDeck({ ...input, language: 'Korean' });
+      await client.generateDeck(input);
+
+      expect(mockGetGenerativeModel.mock.calls.map((call) => call[1].mode)).toEqual([
+        'only_in_cloud',
+        'prefer_on_device',
+      ]);
+      expect(korean.telemetry.inferenceMode).toBe('prefer_on_device');
+      expect(client.getMode()).toBe('prefer_on_device');
+    });
+
+    it('checks the field languages when filling cards', async () => {
+      const client = createWebHybridAIClient({
+        firebaseApp: fakeApp,
+        initialMode: HybridInferenceMode.PREFER_ON_DEVICE,
+      });
+      await client.fillDeckFields({
+        fieldConfigs: [field('term', 'es'), field('latex', 'ko'), field('pinyin', 'en')],
+        cards: [{ id: '1', content: ['hola', '', ''] }],
+      });
+      // LaTeX has no language, and pinyin is always Chinese.
+      expect(mockGetGenerativeModel.mock.lastCall![1].mode).toBe('only_in_cloud');
+    });
+
+    it.each([
+      ['fr', 'prefer_on_device'],
+      ['ko', 'only_in_cloud'],
+    ])('grades recall in %s with mode %s', async (language, expected) => {
+      const client = createWebHybridAIClient({
+        firebaseApp: fakeApp,
+        initialMode: HybridInferenceMode.PREFER_ON_DEVICE,
+      });
+      await client.evaluateRecall({ term: 't', expectedDefinition: 'd', userAnswer: 'a', language });
+      expect(mockGetGenerativeModel.mock.lastCall![1].mode).toBe(expected);
+    });
+  });
 });
